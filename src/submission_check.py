@@ -1,7 +1,8 @@
 """
 EEG Artifact Submission Grader
 
-Scores one team CSV against the hardcoded answer key using row-by-row matching.
+Scores one team CSV against the hardcoded answer key.
+Submission rows are matched to answer-key rows by best IoU — order does not matter.
 
 Usage:
     python submission_check.py path/to/group-id_group-name.csv
@@ -84,7 +85,7 @@ CATEGORY_RULES = {
 MAX_INTERVAL_POINTS = 10.0   # Scales with IoU once timing passes
 
 CATEGORY_POINTS = {
-    "micro_event":      5.0,
+    "micro_event":       5.0,
     "medium_task_block": 8.0,
     "long_task_block":  10.0,
     "macroscopic_state": 6.0,
@@ -159,10 +160,10 @@ def is_blank(row: dict[str, str] | None) -> bool:
     return row is None or all(row.get(c, "").strip() == "" for c in REQUIRED_COLUMNS)
 
 
-def validate(row: dict[str, str]) -> tuple[bool, str, float, float]:
+def parse_times(row: dict[str, str]) -> tuple[bool, str, float, float]:
     """
+    Parse and validate start/end times from a submission row.
     Returns (is_valid, status_tag, pred_start, pred_end).
-    is_valid=False means the row is rejected entirely (no scoring).
     """
     try:
         p_start = float(row["start_time"])
@@ -173,61 +174,100 @@ def validate(row: dict[str, str]) -> tuple[bool, str, float, float]:
     if p_end <= p_start:
         return False, "end_not_after_start", p_start, p_end
 
-    cat = row["artifact_category"]
-    if cat and cat not in CATEGORY_RULES:
-        # Unknown category: still evaluate timing with truth tolerances, no cat points.
-        return True, "unknown_category", p_start, p_end
-
     return True, "ok", p_start, p_end
+
+
+# ────────────────────────────────────────────────────────────
+# IoU-based matching
+# ────────────────────────────────────────────────────────────
+
+def match_predictions(submission: list[dict[str, str]]) -> dict[int, tuple[dict[str, str], float]]:
+    """
+    Match each valid submission row to its best-IoU answer-key row.
+    Each submission row and each answer-key row is used at most once.
+    Higher-IoU pairs are assigned before lower-IoU pairs.
+
+    Returns a dict mapping answer_key_index -> (matched submission row, iou_score).
+    """
+    # Collect all valid submission rows with their parsed times
+    valid_preds: list[tuple[int, dict[str, str], float, float]] = []
+    for sub_idx, row in enumerate(submission):
+        if is_blank(row):
+            continue
+        is_valid, _, p_start, p_end = parse_times(row)
+        if is_valid:
+            valid_preds.append((sub_idx, row, p_start, p_end))
+
+    # Build all (iou_score, answer_key_index, pred_entry) candidates
+    candidates: list[tuple[float, int, tuple]] = []
+    for key_idx, truth in enumerate(ANSWER_KEY):
+        t_start = float(truth["start_time"])
+        t_end   = float(truth["end_time"])
+        for sub_idx, row, p_start, p_end in valid_preds:
+            score = iou(p_start, p_end, t_start, t_end)
+            if score > 0:
+                candidates.append((score, key_idx, (sub_idx, row)))
+
+    # Greedy assignment: best IoU first, each side used at most once
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    matched_keys: set[int] = set()
+    matched_subs: set[int] = set()
+    assignments: dict[int, tuple[dict[str, str], float]] = {}
+
+    for score, key_idx, (sub_idx, row) in candidates:
+        if key_idx in matched_keys or sub_idx in matched_subs:
+            continue
+        assignments[key_idx] = (row, score)
+        matched_keys.add(key_idx)
+        matched_subs.add(sub_idx)
+
+    return assignments
 
 
 # ────────────────────────────────────────────────────────────
 # Row scoring
 # ────────────────────────────────────────────────────────────
 
-def score_row(row_number: int, truth: dict, pred: dict[str, str] | None) -> dict:
+def score_row(row_number: int, truth: dict, pred: dict[str, str] | None, overlap: float) -> dict:
     result = {
-        "row_id":             row_number,
-        "points_earned":      0.0,
-        "interval_accuracy":  0.0,
-        "category_accuracy":  0,
-        "artifact_accuracy":  0,
-        "status":             "unanswered",
+        "row_id":            row_number,
+        "points_earned":     0.0,
+        "interval_accuracy": 0.0,
+        "category_accuracy": 0,
+        "artifact_accuracy": 0,
+        "status":            "unmatched",
     }
 
-    if is_blank(pred):
+    if pred is None:
         return result
 
-    is_valid, status, p_start, p_end = validate(pred)
-    result["status"] = status
+    t_cat   = truth["artifact_category"]
+    t_class = truth["artifact_class"]
+    rules   = CATEGORY_RULES[t_cat]
 
+    is_valid, status, p_start, p_end = parse_times(pred)
+    result["status"] = status
     if not is_valid:
         return result
-
-    t_start  = float(truth["start_time"])
-    t_end    = float(truth["end_time"])
-    t_cat    = truth["artifact_category"]
-    t_class  = truth["artifact_class"]
-    rules    = CATEGORY_RULES[t_cat]
-
-    # Timing check — use truth row's tolerances
-    onset_ok  = abs(p_start - t_start) <= rules["onset_tolerance"]
-    offset_ok = abs(p_end   - t_end)   <= rules["offset_tolerance"]
 
     cat_correct   = pred["artifact_category"] == t_cat
     class_correct = pred["artifact_class"]    == t_class
 
-    # Accuracy is recorded regardless of timing
+    # Accuracy is recorded regardless of timing tolerance
     result["category_accuracy"] = int(cat_correct)
     result["artifact_accuracy"] = int(class_correct)
+
+    # Timing tolerance check using truth row's tolerances
+    t_start   = float(truth["start_time"])
+    t_end     = float(truth["end_time"])
+    onset_ok  = abs(p_start - t_start) <= rules["onset_tolerance"]
+    offset_ok = abs(p_end   - t_end)   <= rules["offset_tolerance"]
 
     if not (onset_ok and offset_ok):
         result["status"] = "interval_outside_tolerance"
         return result
 
-    # Timing passed — compute points
-    overlap = iou(p_start, p_end, t_start, t_end)
-
+    # Timing passed — compute points using the already-computed IoU
     interval_pts = MAX_INTERVAL_POINTS * overlap
     category_pts = CATEGORY_POINTS.get(t_cat, 0.0)   if cat_correct   else 0.0
     class_pts    = CLASS_POINTS.get(t_class, 0.0)     if class_correct else 0.0
@@ -243,11 +283,15 @@ def score_row(row_number: int, truth: dict, pred: dict[str, str] | None) -> dict
 # ────────────────────────────────────────────────────────────
 
 def score_submission(path: Path) -> tuple[list[dict], dict]:
-    submission = read_submission(path)
-    row_results = [
-        score_row(i + 1, truth, submission[i] if i < len(submission) else None)
-        for i, truth in enumerate(ANSWER_KEY)
-    ]
+    submission  = read_submission(path)
+    assignments = match_predictions(submission)
+
+    row_results = []
+    for key_idx, truth in enumerate(ANSWER_KEY):
+        matched = assignments.get(key_idx)
+        pred, overlap = matched if matched else (None, 0.0)
+        row_results.append(score_row(key_idx + 1, truth, pred, overlap))
+
     summary = build_summary(row_results, path)
     return row_results, summary
 
@@ -256,16 +300,16 @@ def build_summary(rows: list[dict], path: Path) -> dict:
     stem = path.stem
     group_id, _, group_name = stem.partition("_")
 
-    interval_acc  = mean(r["interval_accuracy"] for r in rows) if rows else 0.0
-    category_acc  = mean(r["category_accuracy"] for r in rows) if rows else 0.0
-    artifact_acc  = mean(r["artifact_accuracy"] for r in rows) if rows else 0.0
-    general_acc   = mean([interval_acc, category_acc, artifact_acc])
+    interval_acc = mean(r["interval_accuracy"] for r in rows) if rows else 0.0
+    category_acc = mean(r["category_accuracy"] for r in rows) if rows else 0.0
+    artifact_acc = mean(r["artifact_accuracy"] for r in rows) if rows else 0.0
+    general_acc  = mean([interval_acc, category_acc, artifact_acc])
 
     return {
-        "team_file":       path.name,
-        "group_id":        group_id,
-        "group_name":      group_name,
-        "total_points":    round(sum(r["points_earned"] for r in rows), 2),
+        "team_file":         path.name,
+        "group_id":          group_id,
+        "group_name":        group_name,
+        "total_points":      round(sum(r["points_earned"] for r in rows), 2),
         "interval_accuracy": round(interval_acc, 4),
         "category_accuracy": round(category_acc, 4),
         "artifact_accuracy": round(artifact_acc, 4),
@@ -280,11 +324,10 @@ def build_summary(rows: list[dict], path: Path) -> dict:
 def format_row_report(rows: list[dict]) -> list[dict]:
     return [
         {
-            "Row/Data ID":        r["row_id"],
-            "Point":              r["points_earned"],
-            "Interval Accuracy":  r["interval_accuracy"],
-            "Category Accuracy":  r["category_accuracy"],
-            "Artifact Accuracy":  r["artifact_accuracy"],
+            "Point":             r["points_earned"],
+            "Interval Accuracy": r["interval_accuracy"],
+            "Category Accuracy": r["category_accuracy"],
+            "Artifact Accuracy": r["artifact_accuracy"],
         }
         for r in rows
     ]
@@ -325,8 +368,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    args   = parse_args()
-    base   = args.submission.parent / args.submission.stem
+    args = parse_args()
+    base = Path("results") / args.submission.stem
+
+    Path("results").mkdir(exist_ok=True)
 
     rows_path    = args.rows    or Path(f"{base}_rows.csv")
     summary_path = args.summary or Path(f"{base}_summary.csv")
@@ -336,7 +381,7 @@ def main() -> None:
     write_csv(rows_path,    format_row_report(row_results))
     write_csv(summary_path, [format_summary(summary)])
     print_summary(summary)
-    print(f"\nRow report  → {rows_path}")
+    print(f"\nRow report   → {rows_path}")
     print(f"Team summary → {summary_path}")
 
 
