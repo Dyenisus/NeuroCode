@@ -1,0 +1,5 @@
+artifact_category,artifact_class,start_time,end_time
+micro_event,ver_eyem,1.25,1.60
+medium_task_block,swallow,8.20,10.10
+long_task_block,chew,18.00,27.50
+macroscopic_state,close_base,40.00,105.00
