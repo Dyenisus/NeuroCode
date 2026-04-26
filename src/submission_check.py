@@ -87,10 +87,10 @@ MIN_IOU_THRESHOLD = 0.10
 INTERVAL_EXPONENT = 1.5
 
 CATEGORY_POINTS = {
-    "micro_event":       5.0,
-    "medium_task_block": 8.0,
+    "micro_event":       20.0,
+    "medium_task_block": 12.5,
     "long_task_block":  10.0,
-    "macroscopic_state": 6.0,
+    "macroscopic_state": 5.0,
 }
 
 CLASS_POINTS = {
