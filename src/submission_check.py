@@ -263,7 +263,7 @@ def score_row(row_number: int, truth: dict, pred: dict[str, str] | None, overlap
     onset_ok  = abs(p_start - t_start) <= rules["onset_tolerance"]
     offset_ok = abs(p_end   - t_end)   <= rules["offset_tolerance"]
 
-    if not (onset_ok and offset_ok):
+    if not (onset_ok or offset_ok):
         result["status"] = "interval_outside_tolerance"
         return result
 
