@@ -83,27 +83,12 @@ CATEGORY_RULES = {
 # ============================================================
 
 MAX_INTERVAL_POINTS = 10.0   # Scales with IoU once timing passes
-MIN_IOU_THRESHOLD = 0.10
-INTERVAL_EXPONENT = 1.5
 
 CATEGORY_POINTS = {
     "micro_event":       20.0,
     "medium_task_block": 12.5,
     "long_task_block":  10.0,
     "macroscopic_state": 5.0,
-}
-
-CLASS_POINTS = {
-    "ver_eyem":   5.0,
-    "tongue":     8.0,
-    "swallow":   10.0,
-    "hor_headm": 10.0,
-    "ver_headm": 10.0,
-    "eyebrow":    9.0,
-    "chew":      10.0,
-    "blink":      6.0,
-    "close_base": 6.0,
-    "open_base":  6.0,
 }
 
 # ============================================================
@@ -207,7 +192,7 @@ def match_predictions(submission: list[dict[str, str]]) -> dict[int, tuple[dict[
         t_end   = float(truth["end_time"])
         for sub_idx, row, p_start, p_end in valid_preds:
             score = iou(p_start, p_end, t_start, t_end)
-            if score >= MIN_IOU_THRESHOLD:
+            if score >= 0:
                 candidates.append((score, key_idx, (sub_idx, row)))
 
     # Greedy assignment: best IoU first, each side used at most once
@@ -265,16 +250,15 @@ def score_row(row_number: int, truth: dict, pred: dict[str, str] | None, overlap
     onset_ok  = abs(p_start - t_start) <= rules["onset_tolerance"]
     offset_ok = abs(p_end   - t_end)   <= rules["offset_tolerance"]
 
-    if not (onset_ok or offset_ok):
+    if not (onset_ok and offset_ok):
         result["status"] = "interval_outside_tolerance"
         return result
 
     # Timing passed — compute points using the already-computed     
-    interval_pts = MAX_INTERVAL_POINTS * (overlap ** INTERVAL_EXPONENT)
+    interval_pts = MAX_INTERVAL_POINTS * overlap
     category_pts = CATEGORY_POINTS.get(t_cat, 0.0)   if cat_correct   else 0.0
-    class_pts    = CLASS_POINTS.get(t_class, 0.0)     if class_correct else 0.0
 
-    result["points_earned"]     = round(interval_pts + category_pts + class_pts, 2)
+    result["points_earned"]     = round(interval_pts + category_pts, 2)
     result["interval_accuracy"] = round(overlap, 4)
     result["status"]            = status
     return result
