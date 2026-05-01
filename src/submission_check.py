@@ -15,6 +15,7 @@ import argparse
 import csv
 from pathlib import Path
 from statistics import mean
+from openpyxl import load_workbook
 
 # ============================================================
 # ANSWER KEY
@@ -92,6 +93,17 @@ CATEGORY_POINTS = {
 }
 
 # ============================================================
+# TOLERANCE PAD
+# Multiplicative padding added on top of category onset/offset tolerances.
+# e.g. 0.10 means each tolerance is widened by 10% (tol * 1.10).
+# ============================================================
+
+TOLERANCE_PAD = 0.10   # fraction (0.10 = +10%); must be >= 0
+
+if TOLERANCE_PAD < 0:
+    raise ValueError(f"TOLERANCE_PAD must be >= 0, got {TOLERANCE_PAD}")
+
+# ============================================================
 # REQUIRED COLUMNS (do not change unless the spec changes)
 # ============================================================
 
@@ -107,21 +119,48 @@ def _norm(name: str) -> str:
     return name.strip().lower().replace(" ", "_")
 
 
+def _validate_columns(headers: list[str]) -> dict[str, str]:
+    col_map = {_norm(h): h for h in headers}
+    missing = [c for c in REQUIRED_COLUMNS if c not in col_map]
+    if missing:
+        raise ValueError(f"Missing required column(s): {', '.join(missing)}")
+    return col_map
+
+
 def read_submission(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        if reader.fieldnames is None:
+    suffix = path.suffix.lower()
+
+    if suffix == ".csv":
+        with path.open(newline="", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            if reader.fieldnames is None:
+                return []
+            col_map = _validate_columns(list(reader.fieldnames))
+            return [
+                {c: raw[col_map[c]].strip() for c in REQUIRED_COLUMNS}
+                for raw in reader
+            ]
+
+    if suffix == ".xlsx":
+        wb = load_workbook(path, read_only=True, data_only=True)
+        ws = wb.active
+        row_iter = ws.iter_rows(values_only=True)
+        try:
+            header_row = next(row_iter)
+        except StopIteration:
             return []
-
-        col_map = {_norm(h): h for h in reader.fieldnames}
-        missing = [c for c in REQUIRED_COLUMNS if c not in col_map]
-        if missing:
-            raise ValueError(f"Missing required column(s): {', '.join(missing)}")
-
+        headers = [("" if v is None else str(v)) for v in header_row]
+        col_map = _validate_columns(headers)
+        header_index = {h: i for i, h in enumerate(headers)}
         rows = []
-        for raw in reader:
-            rows.append({c: raw[col_map[c]].strip() for c in REQUIRED_COLUMNS})
+        for raw in row_iter:
+            rows.append({
+                c: ("" if (v := raw[header_index[col_map[c]]]) is None else str(v).strip())
+                for c in REQUIRED_COLUMNS
+            })
         return rows
+
+    raise ValueError(f"Unsupported file type '{path.suffix}'. Use .csv or .xlsx.")
 
 
 def write_csv(path: Path, rows: list[dict]) -> None:
@@ -168,22 +207,34 @@ def parse_times(row: dict[str, str]) -> tuple[bool, str, float, float]:
 # IoU-based matching
 # ────────────────────────────────────────────────────────────
 
-def match_predictions(submission: list[dict[str, str]]) -> dict[int, tuple[dict[str, str], float]]:
+def match_predictions(
+    submission: list[dict[str, str]],
+) -> tuple[dict[int, tuple[dict[str, str], float]], list[dict[str, str]]]:
     """
     Match each valid submission row to its best-IoU answer-key row.
     Each submission row and each answer-key row is used at most once.
     Higher-IoU pairs are assigned before lower-IoU pairs.
 
-    Returns a dict mapping answer_key_index -> (matched submission row, iou_score).
+    Returns a tuple of:
+      - assignments: dict mapping answer_key_index -> (matched submission row, iou_score).
+      - invalid_preds: list of non-blank rows whose times could not be parsed,
+        in submission order. These are surfaced so the caller can stamp the
+        real parse-time status instead of "unmatched".
     """
-    # Collect all valid submission rows with their parsed times
+    # Collect all valid submission rows with their parsed times.
+    # Also collect non-blank rows that failed parse_times so the caller can
+    # report the real status (e.g. non_numeric_time, end_not_after_start)
+    # instead of silently turning them into "unmatched" truth rows.
     valid_preds: list[tuple[int, dict[str, str], float, float]] = []
+    invalid_preds: list[dict[str, str]] = []
     for sub_idx, row in enumerate(submission):
         if is_blank(row):
             continue
         is_valid, _, p_start, p_end = parse_times(row)
         if is_valid:
             valid_preds.append((sub_idx, row, p_start, p_end))
+        else:
+            invalid_preds.append(row)
 
     # Build all (iou_score, answer_key_index, pred_entry) candidates
     candidates: list[tuple[float, int, tuple]] = []
@@ -208,7 +259,7 @@ def match_predictions(submission: list[dict[str, str]]) -> dict[int, tuple[dict[
         matched_keys.add(key_idx)
         matched_subs.add(sub_idx)
 
-    return assignments
+    return assignments, invalid_preds
 
 
 # ────────────────────────────────────────────────────────────
@@ -247,14 +298,16 @@ def score_row(row_number: int, truth: dict, pred: dict[str, str] | None, overlap
     # Timing tolerance check using truth row's tolerances
     t_start   = float(truth["start_time"])
     t_end     = float(truth["end_time"])
-    onset_ok  = abs(p_start - t_start) <= rules["onset_tolerance"]
-    offset_ok = abs(p_end   - t_end)   <= rules["offset_tolerance"]
+    onset_tol  = rules["onset_tolerance"]  * (1 + TOLERANCE_PAD)
+    offset_tol = rules["offset_tolerance"] * (1 + TOLERANCE_PAD)
+    onset_ok   = abs(p_start - t_start) <= onset_tol
+    offset_ok  = abs(p_end   - t_end)   <= offset_tol
 
     if not (onset_ok and offset_ok):
         result["status"] = "interval_outside_tolerance"
         return result
 
-    # Timing passed — compute points using the already-computed     
+    # Timing passed — compute points using the already-computed overlap
     interval_pts = MAX_INTERVAL_POINTS * overlap
     category_pts = CATEGORY_POINTS.get(t_cat, 0.0)   if cat_correct   else 0.0
 
@@ -270,12 +323,22 @@ def score_row(row_number: int, truth: dict, pred: dict[str, str] | None, overlap
 
 def score_submission(path: Path) -> tuple[list[dict], dict]:
     submission  = read_submission(path)
-    assignments = match_predictions(submission)
+    assignments, invalid_preds = match_predictions(submission)
 
+    # Consume invalid predictions from the front so that unmatched truth rows
+    # surface the real parse_times status (e.g. non_numeric_time) instead of
+    # silently being stamped "unmatched".
+    remaining_invalid = list(invalid_preds)
     row_results = []
     for key_idx, truth in enumerate(ANSWER_KEY):
         matched = assignments.get(key_idx)
-        pred, overlap = matched if matched else (None, 0.0)
+        if matched:
+            pred, overlap = matched
+        elif remaining_invalid:
+            pred, overlap = remaining_invalid.pop(0), 0.0
+        else:
+            pred, overlap = None, 0.0
+
         row_results.append(score_row(key_idx + 1, truth, pred, overlap))
 
     summary = build_summary(row_results, path)
