@@ -1,0 +1,11 @@
+artifact_category,artifact_class,start_time,end_time
+micro_event,ver_eyem,0.60,0.75
+micro_event,ver_eyem,1.70,2.15
+micro_event,ver_eyem,3.30,3.60
+medium_task_block,swallow,13.00,14.00
+macroscopic_state,close_base,17.00,135.50
+macroscopic_state,open_base,156.00,278.00
+long_task_block,chew,296.00,307.00
+long_task_block,eyebrow,360.00,370.00
+macroscopic_state,blink,380.00,439.00
+long_task_block,hor_headm,469.50,474.00
