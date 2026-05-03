@@ -1,0 +1,11 @@
+services:
+  auto-grader:
+    build: .
+    container_name: my-auto-grader
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Mount the credentials file into the container
+      # Adjust the path if your key.json is not in the src directory
+      - ./src/key.json:/app/src/key.json:ro
