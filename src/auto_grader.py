@@ -12,11 +12,16 @@ from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from submission_check import score_submission, write_csv, format_row_report, format_summary
 
 # --- CONFIGURATION ---
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 SCOPES = ['https://www.googleapis.com/auth/drive']
-CLIENT_SECRET_FILE = 'client_secret.json'
-ROOT_FOLDER_ID = '1YS4fhaAhKIZRtq_Tla0uNv1bDa2Qby7u' 
-POLL_INTERVAL = 30          # Check for new files every 30 seconds
-ERROR_COOLDOWN = 300        # If a file fails, wait 300 seconds (5 mins) before trying again
+CLIENT_SECRET_FILE = os.getenv('CLIENT_SECRET_FILE', 'client_secret.json')
+ROOT_FOLDER_ID = os.getenv('ROOT_FOLDER_ID', '1YS4fhaAhKIZRtq_Tla0uNv1bDa2Qby7u') 
+POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', '30'))          # Check for new files every 30 seconds
+ERROR_COOLDOWN = int(os.getenv('ERROR_COOLDOWN', '300'))       # If a file fails, wait 300 seconds (5 mins) before trying again
 
 def get_drive_service():
     """Authenticates using OAuth and returns Drive API service."""
