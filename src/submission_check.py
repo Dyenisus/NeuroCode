@@ -24,65 +24,59 @@ from openpyxl import load_workbook
 
 ANSWER_KEY = [
     {
-        "artifact_category": "micro_event",
-        "artifact_class":    "ver_eyem",
-        "start_time":       0.50,
-        "end_time":          0.80,
-    },
-    {
-        "artifact_category": "micro_event",
-        "artifact_class":    "ver_eyem",
-        "start_time":        1.80,
-        "end_time":         2.10,
-    },
-    {
-        "artifact_category": "micro_event",
-        "artifact_class":    "ver_eyem",
-        "start_time":        3.20,
-        "end_time":          3.50,
+        "artifact_category": "medium_task_block",
+        "artifact_class":    "swallow",
+        "start_time":        606.279,
+        "end_time":          608.278,
     },
     {
         "artifact_category": "medium_task_block",
-        "artifact_class":    "swallow",
-        "start_time":        12.85,
-        "end_time":          14.10,
+        "artifact_class":    "tongue",
+        "start_time":        808.574,
+        "end_time":          813.574,
     },
     {
         "artifact_category": "long_task_block",
         "artifact_class":    "chew",
-        "start_time":        295.66,
-        "end_time":          306.67,
+        "start_time":        737.544,
+        "end_time":          749.562,
     },
     {
         "artifact_category": "long_task_block",
         "artifact_class":    "eyebrow",
-        "start_time":        337.69,
-        "end_time":          348.70,
+        "start_time":        869.285,
+        "end_time":          870.270,
     },
     {
         "artifact_category": "long_task_block",
         "artifact_class":    "hor_headm",
-        "start_time":        468.86,
-        "end_time":          474.86,
+        "start_time":        468.858,
+        "end_time":          474.858,
     },
     {
-        "artifact_category": "macroscopic_state",
-        "artifact_class":    "close_base",
-        "start_time":        16.15,
-        "end_time":          136.15,
-    },
-    {
-        "artifact_category": "macroscopic_state",
-        "artifact_class":    "open_base",
-        "start_time":        157.04,
-        "end_time":          277.05,
+        "artifact_category": "long_task_block",
+        "artifact_class":    "ver_headm",
+        "start_time":        528.876,
+        "end_time":          534.874,
     },
     {
         "artifact_category": "macroscopic_state",
         "artifact_class":    "blink",
-        "start_time":        379.70,
-        "end_time":          440.71,
+        "start_time":        379.701,
+        "end_time":          440.707,
     },
+    {
+        "artifact_category": "long_task_block",
+        "artifact_class":    "ver_headm",
+        "start_time":        1152.872,
+        "end_time":          1158.856,
+    },
+    {
+        "artifact_category": "long_task_block",
+        "artifact_class":    "hor_headm",
+        "start_time":        1146.856,
+        "end_time":          1152.857,
+    }
 ]
 
 # ============================================================
