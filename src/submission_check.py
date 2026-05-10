@@ -26,59 +26,58 @@ ANSWER_KEY = [
     {
         "artifact_category": "medium_task_block",
         "artifact_class":    "swallow",
-        "start_time":        606.279,
-        "end_time":          608.278,
+        "start_time":        306.279,
+        "end_time":          308.278,
     },
     {
         "artifact_category": "medium_task_block",
         "artifact_class":    "tongue",
-        "start_time":        808.574,
-        "end_time":          813.574,
+        "start_time":        508.574,
+        "end_time":          513.574,
     },
     {
         "artifact_category": "long_task_block",
         "artifact_class":    "chew",
-        "start_time":        737.544,
-        "end_time":          749.562,
+        "start_time":        437.544,
+        "end_time":          449.562,
     },
     {
         "artifact_category": "long_task_block",
         "artifact_class":    "eyebrow",
-        "start_time":        869.285,
-        "end_time":          870.270,
+        "start_time":        569.285,
+        "end_time":          570.270,
     },
     {
         "artifact_category": "long_task_block",
         "artifact_class":    "hor_headm",
-        "start_time":        468.858,
-        "end_time":          474.858,
+        "start_time":        168.858,
+        "end_time":          174.858,
     },
     {
         "artifact_category": "long_task_block",
         "artifact_class":    "ver_headm",
-        "start_time":        528.876,
-        "end_time":          534.874,
+        "start_time":        228.876,
+        "end_time":          234.874,
     },
     {
-        "artifact_category": "macroscopic_state",
+        "artifact_category": "long_task_block",
         "artifact_class":    "blink",
-        "start_time":        379.701,
-        "end_time":          440.707,
+        "start_time":        79.701,
+        "end_time":          140.707,
     },
     {
         "artifact_category": "long_task_block",
         "artifact_class":    "ver_headm",
-        "start_time":        1152.872,
-        "end_time":          1158.856,
+        "start_time":        852.872,
+        "end_time":          858.856,
     },
     {
         "artifact_category": "long_task_block",
         "artifact_class":    "hor_headm",
-        "start_time":        1146.856,
-        "end_time":          1152.857,
+        "start_time":        846.856,
+        "end_time":          852.857,
     }
 ]
-
 # ============================================================
 # CATEGORY RULES
 # onset_tolerance  — max allowed |pred_start - true_start| in seconds
